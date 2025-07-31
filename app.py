@@ -35,8 +35,10 @@ def clone_gitlab_repo(repo_url: str, temp_dir: str) -> bool:
             )
             if result.returncode == 0:
                 return True
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
+            else:
+                st.info(f"Git clone failed: {result.stderr}")
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            st.info(f"Git command not available: {str(e)}")
         
         # Method 2: Try downloading as ZIP file
         try:
@@ -61,9 +63,12 @@ def clone_gitlab_repo(repo_url: str, temp_dir: str) -> bool:
                         f"{protocol_and_domain}/{owner}/{repo}/repository/archive.zip?ref=master"
                     ]
                     
-                    for zip_url in possible_urls:
+                    for i, zip_url in enumerate(possible_urls):
                         try:
+                            st.info(f"Trying download method {i+1}/4: {zip_url}")
                             response = requests.get(zip_url, timeout=30)
+                            st.info(f"Response status: {response.status_code}")
+                            
                             if response.status_code == 200:
                                 zip_path = os.path.join(temp_dir, 'repo.zip')
                                 with open(zip_path, 'wb') as f:
@@ -82,10 +87,17 @@ def clone_gitlab_repo(repo_url: str, temp_dir: str) -> bool:
                                 
                                 os.remove(zip_path)
                                 return True
-                        except Exception:
+                            elif response.status_code == 404:
+                                st.warning(f"Repository not found or branch doesn't exist for method {i+1}")
+                            elif response.status_code == 403:
+                                st.warning(f"Access denied - repository might be private (method {i+1})")
+                            else:
+                                st.warning(f"HTTP {response.status_code} for method {i+1}")
+                        except Exception as e:
+                            st.warning(f"Method {i+1} failed: {str(e)}")
                             continue
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"URL parsing error: {str(e)}")
         
         return False
         
