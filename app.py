@@ -40,59 +40,50 @@ def clone_gitlab_repo(repo_url: str, temp_dir: str) -> bool:
         
         # Method 2: Try downloading as ZIP file
         try:
-            # Convert GitLab URL to archive download URL
-            if 'gitlab.com' in repo_url:
-                # Extract owner and repo name from URL
+            # Convert GitLab URL to archive download URL (works for any GitLab instance)
+            if '//' in repo_url and ('gitlab' in repo_url.lower() or 'git' in repo_url.lower()):
+                # Extract components from URL
                 parts = repo_url.rstrip('/').split('/')
                 if len(parts) >= 2:
-                    owner = parts[-2]
-                    repo = parts[-1]
+                    # Get the base domain and path
+                    protocol_and_domain = '/'.join(parts[:-2])  # https://code.swecha.org
+                    owner = parts[-2]  # soai2025/soai-hackathon  
+                    repo = parts[-1]   # arogya-lens
+                    
                     if repo.endswith('.git'):
                         repo = repo[:-4]
                     
-                    zip_url = f"https://gitlab.com/{owner}/{repo}/-/archive/main/{repo}-main.zip"
+                    # Try different archive URL patterns for different GitLab instances
+                    possible_urls = [
+                        f"{protocol_and_domain}/{owner}/{repo}/-/archive/main/{repo}-main.zip",
+                        f"{protocol_and_domain}/{owner}/{repo}/-/archive/master/{repo}-master.zip",
+                        f"{protocol_and_domain}/{owner}/{repo}/repository/archive.zip?ref=main",
+                        f"{protocol_and_domain}/{owner}/{repo}/repository/archive.zip?ref=master"
+                    ]
                     
-                    response = requests.get(zip_url, timeout=30)
-                    if response.status_code == 200:
-                        zip_path = os.path.join(temp_dir, 'repo.zip')
-                        with open(zip_path, 'wb') as f:
-                            f.write(response.content)
-                        
-                        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                            zip_ref.extractall(temp_dir)
-                        
-                        # Move extracted content to temp_dir root
-                        extracted_dirs = [d for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))]
-                        if extracted_dirs:
-                            extracted_path = os.path.join(temp_dir, extracted_dirs[0])
-                            for item in os.listdir(extracted_path):
-                                shutil.move(os.path.join(extracted_path, item), temp_dir)
-                            os.rmdir(extracted_path)
-                        
-                        os.remove(zip_path)
-                        return True
-                    
-                    # Try master branch if main fails
-                    zip_url = f"https://gitlab.com/{owner}/{repo}/-/archive/master/{repo}-master.zip"
-                    response = requests.get(zip_url, timeout=30)
-                    if response.status_code == 200:
-                        zip_path = os.path.join(temp_dir, 'repo.zip')
-                        with open(zip_path, 'wb') as f:
-                            f.write(response.content)
-                        
-                        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                            zip_ref.extractall(temp_dir)
-                        
-                        # Move extracted content to temp_dir root
-                        extracted_dirs = [d for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))]
-                        if extracted_dirs:
-                            extracted_path = os.path.join(temp_dir, extracted_dirs[0])
-                            for item in os.listdir(extracted_path):
-                                shutil.move(os.path.join(extracted_path, item), temp_dir)
-                            os.rmdir(extracted_path)
-                        
-                        os.remove(zip_path)
-                        return True
+                    for zip_url in possible_urls:
+                        try:
+                            response = requests.get(zip_url, timeout=30)
+                            if response.status_code == 200:
+                                zip_path = os.path.join(temp_dir, 'repo.zip')
+                                with open(zip_path, 'wb') as f:
+                                    f.write(response.content)
+                                
+                                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                                    zip_ref.extractall(temp_dir)
+                                
+                                # Move extracted content to temp_dir root
+                                extracted_dirs = [d for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))]
+                                if extracted_dirs:
+                                    extracted_path = os.path.join(temp_dir, extracted_dirs[0])
+                                    for item in os.listdir(extracted_path):
+                                        shutil.move(os.path.join(extracted_path, item), temp_dir)
+                                    os.rmdir(extracted_path)
+                                
+                                os.remove(zip_path)
+                                return True
+                        except Exception:
+                            continue
         except Exception:
             pass
         
@@ -349,7 +340,7 @@ def main():
     # Sidebar for configuration
     with st.sidebar:
         st.header("Configuration")
-        st.info("Enter your GitLab repository URL to analyze its multilingual capabilities for English and Indic languages")
+        st.info("Enter your Git repository URL to analyze its multilingual capabilities for English and Indic languages")
         
         # Language scope information
         st.markdown("### Supported Language Detection")
@@ -378,18 +369,16 @@ def main():
     
     # Main interface
     repo_url = st.text_input(
-        "GitLab Repository URL",
-        placeholder="https://gitlab.com/username/repository",
-        help="Enter the full GitLab repository URL (must be public)"
+        "Git Repository URL",
+        placeholder="https://gitlab.com/username/repository or https://code.swecha.org/username/repository",
+        help="Enter the full Git repository URL (must be public)"
     )
     
     # URL validation
     if repo_url and not repo_url.startswith(('http://', 'https://')):
         st.warning("⚠️ Please enter a complete URL starting with http:// or https://")
-    elif repo_url and 'gitlab.com' not in repo_url.lower():
-        st.warning("⚠️ This tool is designed for GitLab repositories. Please enter a GitLab URL.")
     
-    if repo_url and repo_url.startswith(('http://', 'https://')) and 'gitlab.com' in repo_url.lower():
+    if repo_url and repo_url.startswith(('http://', 'https://')):
         if st.button("Analyze Repository", type="primary"):
             with st.spinner("Downloading repository and analyzing..."):
                 # Create temporary directory
